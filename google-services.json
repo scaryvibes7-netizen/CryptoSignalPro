@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "543820410131",
+    "project_id": "crypto-signal-pro-3f970",
+    "storage_bucket": "crypto-signal-pro-3f970.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:543820410131:android:f8684854e3312f4e1fbee6",
+        "android_client_info": {
+          "package_name": "com.cryptosignalpro.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9R_XmU2AwcRXaduPagYB12LS7ehO1ST8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

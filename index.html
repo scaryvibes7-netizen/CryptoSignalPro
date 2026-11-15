@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crypto Day Signal</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--card:#131f32;--line:#26364d;--muted:#9aabc2;--blue:#38bdf8;--green:#22c55e;--red:#ef4444}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f1f5f9;font:15px system-ui,-apple-system,Segoe UI,sans-serif;padding:18px;max-width:760px;margin:auto}
+h1{font-size:22px;margin:4px 0}.sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:15px;margin:12px 0}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.coins{display:flex;gap:8px}.coins button,.refresh{border:0;border-radius:9px;padding:10px 14px;background:#26364d;color:white;font-weight:700}
+.coins button.active,.refresh{background:#0284c7}.price{font-size:24px;font-weight:800;color:var(--blue)}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-top:14px}
+.metric{background:#0b1627;border:1px solid var(--line);border-radius:10px;padding:11px}.label{font-size:12px;color:var(--muted)}.value{font-size:16px;font-weight:750;margin-top:5px}
+.signal{text-align:center;padding:16px;border-radius:11px;font-size:19px;font-weight:850;background:#26364d;margin-top:14px}
+.long{background:#123a2b;color:#4ade80;border:1px solid #16834c}.short{background:#421b25;color:#fb7185;border:1px solid #a52b43}.wait{color:#cbd5e1}
+.details{line-height:1.9;font-size:14px}.muted{color:var(--muted)}input{width:100%;padding:11px;background:#0b1627;border:1px solid var(--line);border-radius:8px;color:white;margin-top:6px}
+button{cursor:pointer}.refresh{width:100%;margin-top:12px;font-size:15px}.foot{font-size:12px;color:var(--muted);line-height:1.6}.good{color:var(--green)}.bad{color:var(--red)}
+@media(max-width:420px){body{padding:12px}.grid{gap:7px}.value{font-size:14px}}
+</style></head>
+<body>
+<h1>Crypto Day Signal</h1><div class="sub">15-minute entry · 1-hour trend confirmation · Closed-candle signals</div>
+<div class="row"><div class="coins">
+<button class="active" data-sym="BTCUSDT">BTC</button><button data-sym="ETHUSDT">ETH</button><button data-sym="SOLUSDT">SOL</button>
+</div><div id="price" class="price">Loading…</div></div>
+<div class="card">
+<div class="row"><b id="pair">BTC / USDT</b><span id="updated" class="muted">Waiting for data</span></div>
+<div class="grid">
+<div class="metric"><div class="label">1H Trend</div><div class="value" id="trend">—</div></div>
+<div class="metric"><div class="label">15M RSI (14)</div><div class="value" id="rsi">—</div></div>
+<div class="metric"><div class="label">15M EMA 20 / 50</div><div class="value" id="ema">—</div></div>
+<div class="metric"><div class="label">15M VWAP (rolling)</div><div class="value" id="vwap">—</div></div>
+<div class="metric"><div class="label">ATR (14)</div><div class="value" id="atr">—</div></div>
+<div class="metric"><div class="label">Market filter</div><div class="value" id="filter">—</div></div>
+</div>
+<div id="signal" class="signal wait">ANALYZING…</div>
+<div class="details" style="margin-top:14px">
+<div class="row"><span class="muted">Entry</span><b id="entry">—</b></div>
+<div class="row"><span class="muted">Stop Loss (1R)</span><b id="sl" class="bad">—</b></div>
+<div class="row"><span class="muted">Take Profit (2R)</span><b id="tp" class="good">—</b></div>
+<div class="row"><span class="muted">Signal state</span><b id="state">No active signal</b></div>
+</div>
+</div>
+<div class="card">
+<b>Position size calculator</b><div class="muted" style="font-size:12px;margin-top:4px">Enter the dollar amount you are willing to risk.</div>
+<label class="label" for="risk">Risk amount (USDT)</label><input id="risk" type="number" min="0.1" step="0.1" value="10">
+<div class="row" style="margin-top:10px"><span class="muted">Estimated quantity</span><b id="qty">—</b></div>
+</div>
+<button class="refresh" id="refresh">Refresh market data</button>
+<div class="foot" style="margin-top:14px">
+<b>Signal rules:</b> 1H EMA20/EMA50 trend must agree with the 15M EMA20/EMA50, RSI, and rolling VWAP. Signals are evaluated using the last fully closed 15M candle, not the live candle. The app refreshes prices every 30 seconds, but does not create a new signal every refresh. A signal stays locked until its stop-loss or take-profit is reached, or the confirmed 1H trend reverses.<br><br>
+<b>Important:</b> This is an educational decision-support tool, not financial advice. Indicators do not guarantee accuracy or profit. Test with paper trading first. Binance public API access and internet are required.
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let symbol='BTCUSDT', active=null, lastEvaluated=null, candles15=[], candles1h=[], lastPrice=0, atrNow=0;
+const fmt=n=>Number(n).toLocaleString('en-US',{maximumFractionDigits: n<1?6:2});
+async function klines(sym, interval, limit=120){
+ const r=await fetch(`https://api.binance.com/api/v3/klines?symbol=${sym}&interval=${interval}&limit=${limit}`);
+ if(!r.ok) throw new Error('Binance API unavailable'); return r.json();
+}
+function parse(k){return k.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5],closeTime:x[6]}))}
+function ema(vals,p){let a=2/(p+1),out=[],e=vals[0]; for(let i=0;i<vals.length;i++){e=i===0?vals[i]:vals[i]*a+e*(1-a);out.push(e)}return out}
+function rsi(vals,p=14){let gains=0,loss=0;for(let i=1;i<=p;i++){let d=vals[i]-vals[i-1];if(d>0)gains+=d;else loss-=d}let ag=gains/p,al=loss/p;for(let i=p+1;i<vals.length;i++){let d=vals[i]-vals[i-1];ag=(ag*(p-1)+Math.max(d,0))/p;al=(al*(p-1)+Math.max(-d,0))/p}return al===0?100:100-100/(1+ag/al)}
+function atr(cs,p=14){let trs=[];for(let i=1;i<cs.length;i++){let x=cs[i],prev=cs[i-1];trs.push(Math.max(x.h-x.l,Math.abs(x.h-prev.c),Math.abs(x.l-prev.c)))}return trs.slice(-p).reduce((a,b)=>a+b,0)/Math.min(p,trs.length)}
+function vwap(cs){let a=cs.slice(-96),pv=0,v=0;for(const x of a){let tp=(x.h+x.l+x.c)/3;pv+=tp*x.v;v+=x.v}return pv/v}
+function setText(id,val){$(id).textContent=val}
+function evaluate(){
+ const now=Date.now(), c15=candles15.filter(x=>x.closeTime<now), c1=candles1h.filter(x=>x.closeTime<now);
+ if(c15.length<60||c1.length<60)throw new Error('Not enough candle history');
+ const close15=c15.map(x=>x.c), close1=c1.map(x=>x.c), e20=ema(close15,20).at(-1),e50=ema(close15,50).at(-1), h20=ema(close1,20).at(-1),h50=ema(close1,50).at(-1);
+ const r=rsi(close15), a=atr(c15), vw=vwap(c15), last=c15.at(-1), trend=h20>h50?'BULLISH':h20<h50?'BEARISH':'NEUTRAL';
+ const bull=trend==='BULLISH'&&e20>e50&&last.c>e20&&last.c>vw&&r>=52&&r<=70;
+ const bear=trend==='BEARISH'&&e20<e50&&last.c<e20&&last.c<vw&&r<=48&&r>=30;
+ setText('trend',trend);$('trend').style.color=trend==='BULLISH'?'#4ade80':trend==='BEARISH'?'#fb7185':'#cbd5e1';
+ setText('rsi',r.toFixed(1));setText('ema',`${fmt(e20)} / ${fmt(e50)}`);setText('vwap',fmt(vw));setText('atr',fmt(a));setText('filter',bull?'LONG conditions met':bear?'SHORT conditions met':'No full confirmation');
+ // Only evaluate a fresh, fully closed 15m candle once.
+ if(lastEvaluated!==last.t){
+   lastEvaluated=last.t;
+   if(active){
+     if(lastPrice<=active.sl&&active.side==='LONG'||lastPrice>=active.sl&&active.side==='SHORT')active.status='STOP LOSS HIT';
+     else if(lastPrice>=active.tp&&active.side==='LONG'||lastPrice<=active.tp&&active.side==='SHORT')active.status='TAKE PROFIT HIT';
+     else if((active.side==='LONG'&&trend==='BEARISH')||(active.side==='SHORT'&&trend==='BULLISH'))active.status='EXIT: 1H TREND REVERSED';
+     if(active.status)active=null;
+   }
+   if(!active&&(bull||bear)){
+     const side=bull?'LONG':'SHORT', entry=last.c, risk=a*1.5;
+     active={side,entry,sl:side==='LONG'?entry-risk:entry+risk,tp:side==='LONG'?entry+2*risk:entry-2*risk,created:last.t,status:'ACTIVE'};
+   }
+ }
+ renderSignal();atrNow=a;updateQty();
+}
+function renderSignal(){
+ const box=$('signal');box.className='signal '+(active?(active.side==='LONG'?'long':'short'):'wait');
+ setText('signal',active?`STRONG ${active.side} · ${active.status}`:'WAIT · NO CONFIRMED SETUP');
+ setText('entry',active?fmt(active.entry):'—');setText('sl',active?fmt(active.sl):'—');setText('tp',active?fmt(active.tp):'—');setText('state',active?'Locked until SL / TP / 1H reversal':'Waiting for confirmation');
+}
+function updateQty(){let risk=+ $('risk').value||0;let unit=active?Math.abs(active.entry-active.sl):atrNow*1.5;setText('qty',unit>0?`${fmt(risk/unit)} ${symbol.replace('USDT','')} (approx.)`:'—')}
+async function refresh(){
+ try{
+  const [p,k15,k1]=await Promise.all([
+   fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`).then(r=>{if(!r.ok)throw Error();return r.json()}),
+   klines(symbol,'15m',150),klines(symbol,'1h',150)
+  ]);
+  lastPrice=+p.price;candles15=parse(k15);candles1h=parse(k1);
+  setText('price','$'+fmt(lastPrice));setText('pair',symbol.replace('USDT',' / USDT'));
+  evaluate();setText('updated','Updated '+new Date().toLocaleTimeString());
+ }catch(e){setText('updated','Data error — retry');setText('signal','Unable to load Binance data');}
+}
+document.querySelectorAll('[data-sym]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-sym]').forEach(x=>x.classList.remove('active'));b.classList.add('active');symbol=b.dataset.sym;active=null;lastEvaluated=null;refresh()}));
+$('refresh').addEventListener('click',refresh);$('risk').addEventListener('input',updateQty);
+refresh();setInterval(refresh,30000);
+</script></body></html>
