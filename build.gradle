@@ -1,20 +1,5 @@
+
 plugins {
-    id 'com.android.application'
-    id 'com.google.gms.google-services'
-}
-android {
-    namespace 'com.cryptosignalpro.app'
-    compileSdk 35
-    defaultConfig {
-        applicationId 'com.cryptosignalpro.app'
-        minSdk 23
-        targetSdk 35
-        versionCode 1
-        versionName '1.0'
-    }
-}
-dependencies {
-    implementation platform('com.google.firebase:firebase-bom:33.7.0')
-    implementation 'com.google.firebase:firebase-messaging'
-    implementation 'androidx.appcompat:appcompat:1.7.0'
+    id 'com.android.application' version '8.7.3' apply false
+    id 'com.google.gms.google-services' version '4.4.2' apply false
 }
